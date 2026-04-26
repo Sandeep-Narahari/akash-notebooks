@@ -54,3 +54,8 @@ export interface ProgressEvent {
 }
 
 export type KernelStatus = 'idle' | 'busy' | 'deploying' | 'connecting' | 'reconnecting' | 'error' | null
+
+export interface Secret {
+  key: string
+  value: string
+}

@@ -6,6 +6,7 @@ import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { kernel } from '@/lib/kernel'
 import NotebookEditor from '@/components/NotebookEditor'
+import SidePanel from '@/components/SidePanel'
 import ApiKeyGate from '@/components/ApiKeyGate'
 
 export default function NotebookPage() {
@@ -67,5 +68,12 @@ export default function NotebookPage() {
     )
   }
 
-  return <NotebookEditor />
+  return (
+    <div className="flex h-screen overflow-hidden bg-bg">
+      <SidePanel />
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        <NotebookEditor />
+      </div>
+    </div>
+  )
 }

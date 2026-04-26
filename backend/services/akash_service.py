@@ -42,19 +42,22 @@ def _build_jupyter_sdl(resources: Resources, jupyter_token: str) -> str:
         "version": "2.0",
         "services": {
             "jupyter": {
-                "image": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+                "image": "pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime",
                 "env": [
                     f"JUPYTER_TOKEN={jupyter_token}",
-                    "JUPYTER_ENABLE_LAB=yes",
                 ],
                 "command": [
-                    "start-notebook.sh",
-                    "--ip=0.0.0.0",
-                    "--port=8888",
-                    "--no-browser",
-                    "--ServerApp.allow_origin=*",
-                    "--ServerApp.allow_remote_access=True",
-                    f"--ServerApp.token={jupyter_token}",
+                    "bash",
+                    "-c",
+                    (
+                        "pip install jupyterlab && "
+                        "jupyter lab "
+                        "--ip=0.0.0.0 "
+                        "--port=8888 "
+                        "--no-browser "
+                        "--allow-root "
+                        f"--ServerApp.token={jupyter_token}"
+                    ),
                 ],
                 "expose": [
                     {

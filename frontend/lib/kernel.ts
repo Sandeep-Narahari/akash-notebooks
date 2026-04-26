@@ -323,6 +323,36 @@ class JupyterKernel {
   isConnected(): boolean {
     return this.connected && this.ws !== null && this.ws.readyState === WebSocket.OPEN
   }
+
+  injectSecrets(secrets: Record<string, string>): void {
+    if (!this.ws || !this.connected || Object.keys(secrets).length === 0) return
+    const lines = Object.entries(secrets).map(
+      ([k, v]) => `os.environ[${JSON.stringify(k)}] = ${JSON.stringify(v)}`
+    )
+    const code = `import os\n${lines.join('\n')}`
+    this.ws.send(JSON.stringify({
+      header: {
+        msg_id: uuidv4(),
+        session: this.jupyterSessionId,
+        username: 'user',
+        date: new Date().toISOString(),
+        msg_type: 'execute_request',
+        version: '5.3',
+      },
+      parent_header: {},
+      metadata: {},
+      content: {
+        code,
+        silent: true,
+        store_history: false,
+        user_expressions: {},
+        allow_stdin: false,
+        stop_on_error: false,
+      },
+      channel: 'shell',
+      buffers: [],
+    }))
+  }
 }
 
 export const kernel = new JupyterKernel()

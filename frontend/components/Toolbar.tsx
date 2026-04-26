@@ -31,6 +31,7 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
     clearLogs,
     activeSessions,
     setActiveSessions,
+    secrets,
   } = useStore()
 
   const [isConnecting, setIsConnecting] = useState(false)
@@ -60,6 +61,7 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
     kernel.connect(existing.id, existing.kernel_id!)
       .then(() => {
         kernel.setStatusCallback((ks) => setKernelStatus(ks))
+        kernel.injectSecrets(secrets)
         return api.sessions.get(existing.id)
       })
       .then((sessionData) => {
@@ -114,6 +116,7 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
             try {
               await kernel.connect(session_id, event.kernel_id)
               kernel.setStatusCallback((ks) => setKernelStatus(ks))
+              kernel.injectSecrets(secrets)
 
               const sessionData = await api.sessions.get(session_id)
               setSession(sessionData)
@@ -178,6 +181,7 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
       const { kernel_id } = await api.sessions.restart(session.id)
       await kernel.connect(session.id, kernel_id)
       kernel.setStatusCallback((ks) => setKernelStatus(ks))
+      kernel.injectSecrets(secrets)
       setKernelStatus('idle')
       addLog('Kernel restarted')
     } catch (err) {

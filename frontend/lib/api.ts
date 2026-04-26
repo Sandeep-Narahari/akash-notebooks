@@ -74,6 +74,17 @@ export const api = {
       const res = await client.post<{ status: string; kernel_id: string }>(`/sessions/${id}/restart`)
       return res.data
     },
+    async createTerminal(id: string): Promise<{ name: string }> {
+      const res = await client.post<{ name: string }>(`/sessions/${id}/terminal`)
+      return res.data
+    },
+    async upload(id: string, formData: FormData): Promise<{ path: string; status: string }> {
+      const res = await client.post<{ path: string; status: string }>(
+        `/sessions/${id}/upload`,
+        formData,
+      )
+      return res.data
+    },
     streamProgress(
       id: string,
       onEvent: (event: ProgressEvent) => void,

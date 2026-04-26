@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 import database as db
@@ -179,6 +180,57 @@ async def restart_kernel(session_id: str) -> dict:
         raise HTTPException(status_code=502, detail=f"Jupyter unreachable: {exc}") from exc
 
     return {"status": "restarted", "kernel_id": session.kernel_id}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sessions/{id}/terminal — create a Jupyter terminal
+# ---------------------------------------------------------------------------
+
+@router.post("/{session_id}/terminal")
+async def create_terminal(session_id: str) -> dict:
+    session = await db.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != SessionStatus.READY or not session.jupyter_url:
+        raise HTTPException(status_code=400, detail="Session not ready")
+
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        resp = await c.post(
+            f"{session.jupyter_url}/api/terminals",
+            headers={"Authorization": f"token {session.jupyter_token}"},
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Failed to create terminal: {resp.status_code}")
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sessions/{id}/upload — upload file to Jupyter workspace
+# ---------------------------------------------------------------------------
+
+@router.post("/{session_id}/upload")
+async def upload_to_session(
+    session_id: str,
+    file: UploadFile = File(...),
+) -> dict:
+    session = await db.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != SessionStatus.READY or not session.jupyter_url:
+        raise HTTPException(status_code=400, detail="Session not ready")
+
+    content = await file.read()
+    encoded = base64.b64encode(content).decode()
+
+    async with httpx.AsyncClient(timeout=60.0) as c:
+        resp = await c.put(
+            f"{session.jupyter_url}/api/contents/{file.filename}",
+            headers={"Authorization": f"token {session.jupyter_token}"},
+            json={"type": "file", "format": "base64", "content": encoded},
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Upload failed: {resp.status_code}")
+    return {"path": file.filename, "status": "uploaded"}
 
 
 # ---------------------------------------------------------------------------

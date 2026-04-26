@@ -2,6 +2,21 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import type { Notebook, NotebookCell, Session } from './types'
 
+function loadSecrets(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  try {
+    return JSON.parse(localStorage.getItem('akash_secrets') || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function saveSecrets(s: Record<string, string>): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('akash_secrets', JSON.stringify(s))
+  }
+}
+
 interface AppStore {
   // API Key
   apiKey: string | null
@@ -37,6 +52,11 @@ interface AppStore {
   // Kernel status
   kernelStatus: 'idle' | 'busy' | 'deploying' | 'connecting' | 'reconnecting' | 'error' | null
   setKernelStatus: (status: 'idle' | 'busy' | 'deploying' | 'connecting' | 'reconnecting' | 'error' | null) => void
+
+  // Secrets
+  secrets: Record<string, string>
+  addSecret: (key: string, value: string) => void
+  removeSecret: (key: string) => void
 }
 
 function createEmptyCell(): NotebookCell {
@@ -163,4 +183,20 @@ export const useStore = create<AppStore>((set) => ({
   // Kernel status
   kernelStatus: null,
   setKernelStatus: (status) => set({ kernelStatus: status }),
+
+  // Secrets (localStorage-backed)
+  secrets: loadSecrets(),
+  addSecret: (key, value) =>
+    set((state) => {
+      const next = { ...state.secrets, [key]: value }
+      saveSecrets(next)
+      return { secrets: next }
+    }),
+  removeSecret: (key) =>
+    set((state) => {
+      const next = { ...state.secrets }
+      delete next[key]
+      saveSecrets(next)
+      return { secrets: next }
+    }),
 }))
