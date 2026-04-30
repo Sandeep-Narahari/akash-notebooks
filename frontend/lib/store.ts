@@ -32,7 +32,7 @@ interface AppStore {
   currentNotebook: Notebook | null
   setCurrentNotebook: (notebook: Notebook | null) => void
   updateCell: (cellId: string, updates: Partial<NotebookCell>) => void
-  addCell: (afterCellId?: string) => void
+  addCell: (afterCellId?: string, cellType?: 'code' | 'markdown') => void
   deleteCell: (cellId: string) => void
   moveCell: (cellId: string, direction: 'up' | 'down') => void
 
@@ -59,10 +59,10 @@ interface AppStore {
   removeSecret: (key: string) => void
 }
 
-function createEmptyCell(): NotebookCell {
+function createEmptyCell(cellType: 'code' | 'markdown' = 'code'): NotebookCell {
   return {
     id: uuidv4(),
-    type: 'code',
+    type: cellType,
     source: '',
     outputs: [],
     execution_count: null,
@@ -111,10 +111,10 @@ export const useStore = create<AppStore>((set) => ({
       }
     }),
 
-  addCell: (afterCellId) =>
+  addCell: (afterCellId, cellType) =>
     set((state) => {
       if (!state.currentNotebook) return state
-      const newCell = createEmptyCell()
+      const newCell = createEmptyCell(cellType)
       const cells = [...state.currentNotebook.cells]
       if (afterCellId) {
         const idx = cells.findIndex((c) => c.id === afterCellId)

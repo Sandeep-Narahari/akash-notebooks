@@ -58,9 +58,12 @@ app.add_middleware(
 # Routers
 # ---------------------------------------------------------------------------
 
+from routers.ai import router as ai_router
+
 app.include_router(sessions_router)
 app.include_router(notebooks_router)
 app.include_router(proxy_router)
+app.include_router(ai_router)
 
 
 # ---------------------------------------------------------------------------

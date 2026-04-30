@@ -105,16 +105,25 @@ function ErrorOutput({ output }: { output: CellOutputType }) {
 
 export default function CellOutput({ outputs }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const userScrolledUpRef = useRef(false)
 
-  // Auto-scroll to bottom as new output streams in.
-  // If the user manually scrolled up (to read earlier lines), stop auto-scrolling.
+  // Track whether user manually scrolled up — pause auto-scroll if so.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (distFromBottom < 80) {
-      el.scrollTop = el.scrollHeight
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      userScrolledUpRef.current = distFromBottom > 80
     }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Stick to bottom on new output unless user scrolled up.
+  useEffect(() => {
+    if (userScrolledUpRef.current) return
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [outputs])
 
   if (!outputs || outputs.length === 0) return null

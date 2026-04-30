@@ -157,6 +157,78 @@ async def get_session(session_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/sessions/{id}/kernel — verify kernel alive, recover if dead
+# ---------------------------------------------------------------------------
+
+@router.get("/{session_id}/kernel")
+async def get_or_recover_kernel(session_id: str) -> dict:
+    session = await db.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != SessionStatus.READY or not session.jupyter_url:
+        raise HTTPException(status_code=400, detail="Session not ready")
+
+    headers = {"Authorization": f"token {session.jupyter_token}"}
+
+    # Check if the stored kernel is still alive.
+    kernel_alive = False
+    if session.kernel_id:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                resp = await c.get(
+                    f"{session.jupyter_url}/api/kernels/{session.kernel_id}",
+                    headers=headers,
+                )
+            kernel_alive = resp.status_code == 200
+        except httpx.RequestError:
+            kernel_alive = False
+
+    if kernel_alive:
+        return {"kernel_id": session.kernel_id, "recovered": False}
+
+    # Kernel dead — create a fresh one and persist.
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as c:
+            resp = await c.post(
+                f"{session.jupyter_url}/api/kernels",
+                headers=headers,
+                json={"name": "python3"},
+            )
+            resp.raise_for_status()
+            new_kernel_id: str = resp.json()["id"]
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to create kernel: {exc}") from exc
+
+    await db.update_session(session_id, kernel_id=new_kernel_id)
+    logger.info("Kernel recovered for session %s → %s", session_id, new_kernel_id)
+    return {"kernel_id": new_kernel_id, "recovered": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sessions/{id}/interrupt — send SIGINT to the running kernel
+# ---------------------------------------------------------------------------
+
+@router.post("/{session_id}/interrupt", status_code=204)
+async def interrupt_kernel(session_id: str) -> None:
+    session = await db.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != SessionStatus.READY or not session.jupyter_url or not session.kernel_id:
+        raise HTTPException(status_code=400, detail="Session not ready")
+
+    interrupt_url = f"{session.jupyter_url}/api/kernels/{session.kernel_id}/interrupt"
+    headers = {"Authorization": f"token {session.jupyter_token}"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.post(interrupt_url, headers=headers)
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=502, detail=f"Jupyter interrupt failed: {resp.status_code}")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Jupyter unreachable: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
 # POST /api/sessions/{id}/restart — restart the Jupyter kernel
 # ---------------------------------------------------------------------------
 

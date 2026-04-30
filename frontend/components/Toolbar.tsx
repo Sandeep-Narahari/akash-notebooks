@@ -9,7 +9,7 @@ import { kernel } from '@/lib/kernel'
 import ResourcePicker from './ResourcePicker'
 import KernelStatus from './KernelStatus'
 import DeploymentProgress from './DeploymentProgress'
-import type { Resources, ProgressEvent } from '@/lib/types'
+import type { Resources, ProgressEvent, Session } from '@/lib/types'
 
 interface Props {
   onRunAll: () => void
@@ -29,8 +29,6 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
     setKernelStatus,
     addLog,
     clearLogs,
-    activeSessions,
-    setActiveSessions,
     secrets,
   } = useStore()
 
@@ -46,38 +44,50 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
   const nameInputRef = useRef<HTMLInputElement>(null)
   const esRef = useRef<EventSource | null>(null)
 
-  // Auto-resume: if there's an active session for this notebook, reconnect to it.
+  // Auto-resume: fetch sessions fresh on every notebook load — no stale store state.
   useEffect(() => {
     if (!currentNotebook || session || isConnecting) return
-    const existing = activeSessions.find(
-      (s) => s.notebook_id === currentNotebook.id && s.status === 'ready' && s.kernel_id
-    )
-    if (!existing) return
+    let cancelled = false
 
-    setIsConnecting(true)
-    setKernelStatus('connecting')
-    addLog('Resuming existing session...')
+    ;(async () => {
+      let didStart = false
+      try {
+        const sessions: Session[] = await api.sessions.list().catch(() => [])
+        if (cancelled) return
+        const existing = sessions.find(
+          (s) => s.notebook_id === currentNotebook.id && s.status === 'ready' && s.kernel_id
+        )
+        if (!existing) return
 
-    kernel.connect(existing.id, existing.kernel_id!)
-      .then(() => {
+        didStart = true
+        setIsConnecting(true)
+        setKernelStatus('connecting')
+        addLog('Resuming existing session...')
+
+        const { kernel_id, recovered } = await api.sessions.getOrRecoverKernel(existing.id)
+        if (cancelled) return
+        if (recovered) addLog('Kernel was dead — recovered a new one')
+        const fetcher = () => api.sessions.getOrRecoverKernel(existing.id).then((r) => r.kernel_id)
+        // Set callback BEFORE connecting so status messages during handshake are handled.
         kernel.setStatusCallback((ks) => setKernelStatus(ks))
+        await kernel.connect(existing.id, kernel_id, fetcher)
+        if (cancelled) { kernel.disconnect(); return }
         kernel.injectSecrets(secrets)
-        return api.sessions.get(existing.id)
-      })
-      .then((sessionData) => {
+        const sessionData = await api.sessions.get(existing.id)
         setSession(sessionData)
         setKernelStatus('idle')
         addLog('Kernel reconnected to existing session')
-      })
-      .catch((err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('Resume failed:', err)
         addLog(`Resume failed: ${err}`)
         setKernelStatus(null)
-      })
-      .finally(() => {
-        setIsConnecting(false)
-        setActiveSessions([])
-      })
+      } finally {
+        if (!cancelled && didStart) setIsConnecting(false)
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [currentNotebook?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = useCallback(async () => {
@@ -114,8 +124,10 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
             setKernelStatus('connecting')
 
             try {
-              await kernel.connect(session_id, event.kernel_id)
+              const fetcher = () => api.sessions.getOrRecoverKernel(session_id).then((r) => r.kernel_id)
+              // Set callback BEFORE connecting so status messages during handshake are handled.
               kernel.setStatusCallback((ks) => setKernelStatus(ks))
+              await kernel.connect(session_id, event.kernel_id, fetcher)
               kernel.injectSecrets(secrets)
 
               const sessionData = await api.sessions.get(session_id)
@@ -179,8 +191,15 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
     try {
       kernel.disconnect()
       const { kernel_id } = await api.sessions.restart(session.id)
-      await kernel.connect(session.id, kernel_id)
+      const fetcher = () => api.sessions.getOrRecoverKernel(session.id).then((r) => r.kernel_id)
+      // Set callback BEFORE connecting so status messages during handshake are handled.
       kernel.setStatusCallback((ks) => setKernelStatus(ks))
+      await Promise.race([
+        kernel.connect(session.id, kernel_id, fetcher),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Connection timeout after 15s')), 15000)
+        ),
+      ])
       kernel.injectSecrets(secrets)
       setKernelStatus('idle')
       addLog('Kernel restarted')
@@ -190,7 +209,7 @@ export default function Toolbar({ onRunAll, isSaving, resources, onResourceChang
     } finally {
       setIsRestarting(false)
     }
-  }, [session, isRestarting, addLog, setKernelStatus])
+  }, [session, isRestarting, addLog, setKernelStatus, secrets])
 
   const handleNameBlur = useCallback(async () => {
     setIsEditingName(false)

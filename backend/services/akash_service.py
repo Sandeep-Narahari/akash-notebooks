@@ -42,22 +42,24 @@ def _build_jupyter_sdl(resources: Resources, jupyter_token: str) -> str:
         "version": "2.0",
         "services": {
             "jupyter": {
-                "image": "pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime",
+                "image": "pytorch/pytorch:2.2.2-cuda12.1-cudnn8-devel",
                 "env": [
                     f"JUPYTER_TOKEN={jupyter_token}",
+                    "JUPYTER_ENABLE_LAB=yes",
+
                 ],
                 "command": [
                     "bash",
                     "-c",
                     (
-                        "pip install jupyterlab && "
-                        "jupyter lab "
-                        "--ip=0.0.0.0 "
-                        "--port=8888 "
-                        "--no-browser "
-                        "--allow-root "
-                        f"--ServerApp.token={jupyter_token}"
-                    ),
+                        f"pip install jupyterlab && "
+                        f"jupyter lab "
+                        f"--ip=0.0.0.0 --port=8888 --no-browser --allow-root "
+                        f"--ServerApp.token={jupyter_token} "
+                        f"--MappingKernelManager.cull_idle_timeout=0 "
+                        f"--MappingKernelManager.cull_interval=0 "
+                        f"--ServerApp.shutdown_no_activity_timeout=0"
+                    )
                 ],
                 "expose": [
                     {
@@ -135,7 +137,7 @@ class AkashService:
         async with self._client(api_key) as client:
             resp = await client.post(
                 "/v1/deployments",
-                json={"data": {"sdl": sdl, "deposit": 0.5}},
+                json={"data": {"sdl": sdl, "deposit": 5}},
             )
             if not resp.is_success:
                 raise RuntimeError(f"Deploy failed {resp.status_code}: {resp.text}")

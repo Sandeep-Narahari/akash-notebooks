@@ -13,7 +13,7 @@ export default function NotebookPage() {
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
-  const { apiKey, setCurrentNotebook, setActiveSessions } = useStore()
+  const { apiKey, setCurrentNotebook, setActiveSessions, setSession, setKernelStatus } = useStore()
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,9 +39,11 @@ export default function NotebookPage() {
 
     return () => {
       setCurrentNotebook(null)
+      setSession(null)
+      setKernelStatus(null)
       kernel.disconnect()
     }
-  }, [id, apiKey, setCurrentNotebook, setActiveSessions])
+  }, [id, apiKey, setCurrentNotebook, setActiveSessions, setSession, setKernelStatus])
 
   if (!mounted) return null
   if (!apiKey) return <ApiKeyGate />

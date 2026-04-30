@@ -18,7 +18,7 @@ export interface CellOutput {
 
 export interface NotebookCell {
   id: string
-  type: 'code'
+  type: 'code' | 'markdown'
   source: string
   outputs: CellOutput[]
   execution_count: number | null

@@ -1,0 +1,48 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_PATH: /data/akash_notebooks.db
+      # Comma-separated list of allowed CORS origins
+      ALLOWED_ORIGINS: "http://localhost:3000,http://frontend:3000"
+    volumes:
+      - db_data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Internal Docker DNS name of the backend service.
+        # Next.js rewrites proxy /api/* here at the server level.
+        BACKEND_URL: http://backend:8000
+        # Leave empty: browser calls go to /api/* on the same origin,
+        # which Next.js proxies to the backend. Set to the public backend
+        # URL only when deploying frontend and backend on separate domains.
+        NEXT_PUBLIC_API_HOST: ""
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  db_data:

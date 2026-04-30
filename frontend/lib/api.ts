@@ -70,6 +70,13 @@ export const api = {
     async delete(id: string): Promise<void> {
       await client.delete(`/sessions/${id}`)
     },
+    async getOrRecoverKernel(id: string): Promise<{ kernel_id: string; recovered: boolean }> {
+      const res = await client.get<{ kernel_id: string; recovered: boolean }>(`/sessions/${id}/kernel`)
+      return res.data
+    },
+    async interrupt(id: string): Promise<void> {
+      await client.post(`/sessions/${id}/interrupt`)
+    },
     async restart(id: string): Promise<{ status: string; kernel_id: string }> {
       const res = await client.post<{ status: string; kernel_id: string }>(`/sessions/${id}/restart`)
       return res.data
@@ -109,4 +116,11 @@ export const api = {
       return es
     },
   },
+
+  // ai: {
+  //   async completions(messages: { role: string; content: string }[]): Promise<any> {
+  //     const res = await client.post('/ai/completions', { messages })
+  //     return res.data
+  //   },
+  // },
 }
